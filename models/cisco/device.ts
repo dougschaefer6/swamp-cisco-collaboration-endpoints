@@ -3,8 +3,8 @@ import {
   patchDeviceConfig,
   sanitizeId,
   webexApi,
-  webexPaginate,
   WebexGlobalArgsSchema,
+  webexPaginate,
   xapiCommand,
   xapiStatus,
 } from "./_client.ts";
@@ -185,7 +185,11 @@ export const model = {
       execute: async (args: Record<string, string | undefined>, context: {
         globalArgs: z.infer<typeof WebexGlobalArgsSchema>;
         logger: { info: (msg: string, vars?: Record<string, unknown>) => void };
-        writeResource: (type: string, name: string, data: unknown) => Promise<unknown>;
+        writeResource: (
+          type: string,
+          name: string,
+          data: unknown,
+        ) => Promise<unknown>;
       }) => {
         const params: Record<string, string> = {};
         if (args.product) params.product = args.product;
@@ -224,7 +228,11 @@ export const model = {
       execute: async (args: { deviceId: string }, context: {
         globalArgs: z.infer<typeof WebexGlobalArgsSchema>;
         logger: { info: (msg: string, vars?: Record<string, unknown>) => void };
-        writeResource: (type: string, name: string, data: unknown) => Promise<unknown>;
+        writeResource: (
+          type: string,
+          name: string,
+          data: unknown,
+        ) => Promise<unknown>;
       }) => {
         const device = (await webexApi(
           `/devices/${encodeURIComponent(args.deviceId)}`,
@@ -496,7 +504,9 @@ export const model = {
               command: args.command,
               result,
             },
-            name: `cmd-${sanitizeId(args.command)}-${sanitizeId(args.deviceId).slice(-12)}`,
+            name: `cmd-${sanitizeId(args.command)}-${
+              sanitizeId(args.deviceId).slice(-12)
+            }`,
           },
         };
       },
@@ -615,7 +625,11 @@ export const model = {
       execute: async (args: { workspaceId: string }, context: {
         globalArgs: z.infer<typeof WebexGlobalArgsSchema>;
         logger: { info: (msg: string, vars?: Record<string, unknown>) => void };
-        writeResource: (type: string, name: string, data: unknown) => Promise<unknown>;
+        writeResource: (
+          type: string,
+          name: string,
+          data: unknown,
+        ) => Promise<unknown>;
       }) => {
         const ws = (await webexApi(
           `/workspaces/${encodeURIComponent(args.workspaceId)}`,

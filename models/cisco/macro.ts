@@ -1,5 +1,6 @@
 import { z } from "npm:zod@4";
 import {
+  patchDeviceConfig,
   sanitizeId,
   WebexGlobalArgsSchema,
   xapiCommand,
@@ -33,13 +34,15 @@ export const model = {
   globalArguments: WebexGlobalArgsSchema,
   resources: {
     macro: {
-      description: "Cisco RoomOS macro deployed to a device — source code, activation state, and deployment metadata",
+      description:
+        "Cisco RoomOS macro deployed to a device — source code, activation state, and deployment metadata",
       schema: MacroSchema,
       lifetime: "infinite" as const,
       garbageCollection: 10,
     },
     deployment: {
-      description: "Macro deployment result — step-by-step record of a push operation to one or more devices",
+      description:
+        "Macro deployment result — step-by-step record of a push operation to one or more devices",
       schema: DeploymentResultSchema,
       lifetime: "infinite" as const,
       garbageCollection: 10,
@@ -55,7 +58,11 @@ export const model = {
       execute: async (args: { deviceId: string }, context: {
         globalArgs: z.infer<typeof WebexGlobalArgsSchema>;
         logger: { info: (msg: string, vars?: Record<string, unknown>) => void };
-        writeResource: (type: string, name: string, data: unknown) => Promise<unknown>;
+        writeResource: (
+          type: string,
+          name: string,
+          data: unknown,
+        ) => Promise<unknown>;
       }) => {
         const result = (await xapiCommand(
           "Macros.Macro.Get",
@@ -387,7 +394,6 @@ export const model = {
 
         // Step 1: Enable macro mode
         try {
-          const { patchDeviceConfig } = await import("./_client.ts");
           await patchDeviceConfig(args.deviceId, context.globalArgs, [
             {
               op: "replace",
@@ -581,7 +587,6 @@ export const model = {
 
           // Enable macro mode
           try {
-            const { patchDeviceConfig } = await import("./_client.ts");
             await patchDeviceConfig(deviceId, context.globalArgs, [
               {
                 op: "replace",
