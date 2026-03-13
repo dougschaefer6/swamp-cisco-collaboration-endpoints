@@ -1,4 +1,4 @@
-# @dougschaefer/cisco
+# @dougschaefer/cisco-collaboration-endpoints
 
 Cisco RoomOS device and macro management extension for [Swamp](https://swamp.club) — programmatic device inventory, health checks, xAPI command execution, configuration management, macro deployment, and fleet operations via the Webex Control Hub cloud API.
 
@@ -81,7 +81,7 @@ The `healthCheck` and `getStatus` methods use MTR-safe status paths by default.
 ## Installation
 
 ```bash
-swamp extension pull @dougschaefer/cisco
+swamp extension pull @dougschaefer/cisco-collaboration-endpoints
 ```
 
 ## API Reference

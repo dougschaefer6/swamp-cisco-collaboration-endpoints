@@ -19,7 +19,7 @@ import {
  * Base URL: https://webexapis.com/v1
  * Auth: Bearer token from a Webex Service App (OAuth2 client_credentials + per-org refresh tokens)
  *
- * Key API surfaces used by this model and the companion @dougschaefer/cisco-macro model:
+ * Key API surfaces used by this model and the companion @dougschaefer/cisco-collaboration-endpoints-macro model:
  *
  * DEVICES API
  *   GET    /devices              — List all devices in the org (paginated, Link header)
@@ -147,8 +147,8 @@ const WorkspaceSchema = z.object({
 }).passthrough();
 
 export const model = {
-  type: "@dougschaefer/cisco-device",
-  version: "2026.03.13.1",
+  type: "@dougschaefer/cisco-collaboration-endpoints-device",
+  version: "2026.03.13.2",
   globalArguments: WebexGlobalArgsSchema,
   resources: {
     device: {
@@ -457,7 +457,7 @@ export const model = {
 
     executeCommand: {
       description:
-        "Execute an arbitrary xAPI command on a device via the Webex cloud API. Commands work in all device modes (native, MTR, Zoom). For macro-specific commands, prefer the @dougschaefer/cisco-macro model methods.",
+        "Execute an arbitrary xAPI command on a device via the Webex cloud API. Commands work in all device modes (native, MTR, Zoom). For macro-specific commands, prefer the @dougschaefer/cisco-collaboration-endpoints-macro model methods.",
       arguments: z.object({
         deviceId: z.string().describe("Webex device ID"),
         command: z.string().describe(
