@@ -25,8 +25,8 @@ export const WebexGlobalArgsSchema = z.object({
   ),
   baseUrl: z
     .string()
-    .default("https://webexapis.com/v1")
-    .describe("Webex API base URL"),
+    .optional()
+    .describe("Webex API base URL (defaults to https://webexapis.com/v1)"),
 });
 
 export type WebexGlobalArgs = z.infer<typeof WebexGlobalArgsSchema>;
@@ -40,7 +40,7 @@ export async function webexApi(
     params?: Record<string, string>;
   },
 ): Promise<unknown> {
-  const url = new URL(path, globalArgs.baseUrl);
+  const url = new URL(path, globalArgs.baseUrl || "https://webexapis.com/v1");
   if (options?.params) {
     for (const [k, v] of Object.entries(options.params)) {
       if (v !== undefined && v !== "") url.searchParams.set(k, v);
@@ -106,7 +106,10 @@ export async function xapiStatus(
   globalArgs: WebexGlobalArgs,
   ...names: string[]
 ): Promise<Record<string, unknown>> {
-  const url = new URL("/v1/xapi/status", globalArgs.baseUrl);
+  const url = new URL(
+    "/v1/xapi/status",
+    globalArgs.baseUrl || "https://webexapis.com/v1",
+  );
   url.searchParams.set("deviceId", deviceId);
   for (const name of names.slice(0, 10)) {
     url.searchParams.append("name", name);
@@ -136,7 +139,10 @@ export async function patchDeviceConfig(
   globalArgs: WebexGlobalArgs,
   patches: Array<{ op: string; path: string; value: string }>,
 ): Promise<unknown> {
-  const url = new URL("/v1/deviceConfigurations", globalArgs.baseUrl);
+  const url = new URL(
+    "/v1/deviceConfigurations",
+    globalArgs.baseUrl || "https://webexapis.com/v1",
+  );
   url.searchParams.set("deviceId", deviceId);
 
   const resp = await fetch(url.toString(), {
@@ -170,7 +176,7 @@ export async function webexPaginate(
   const allItems: Array<Record<string, unknown>> = [];
   let currentUrl: string | null = null;
 
-  const url = new URL(path, globalArgs.baseUrl);
+  const url = new URL(path, globalArgs.baseUrl || "https://webexapis.com/v1");
   if (params) {
     for (const [k, v] of Object.entries(params)) {
       if (v !== undefined && v !== "") url.searchParams.set(k, v);
@@ -194,7 +200,9 @@ export async function webexPaginate(
       throw new Error(`Webex API ${resp.status}: ${body}`);
     }
 
-    const data = await resp.json() as { items?: Array<Record<string, unknown>> };
+    const data = await resp.json() as {
+      items?: Array<Record<string, unknown>>;
+    };
     if (data.items) {
       allItems.push(...data.items);
     }
@@ -202,7 +210,9 @@ export async function webexPaginate(
     // Check Link header for next page
     const linkHeader: string | null = resp.headers.get("Link");
     if (linkHeader) {
-      const nextMatch: RegExpMatchArray | null = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
+      const nextMatch: RegExpMatchArray | null = linkHeader.match(
+        /<([^>]+)>;\s*rel="next"/,
+      );
       currentUrl = nextMatch ? nextMatch[1] : null;
     } else {
       currentUrl = null;

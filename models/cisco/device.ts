@@ -107,48 +107,16 @@ const DeviceSchema = z.object({
   id: z.string(),
   displayName: z.string(),
   product: z.string(),
-  type: z.string(),
-  ip: z.string().optional(),
-  mac: z.string().optional(),
-  serial: z.string().optional(),
-  software: z.string().optional(),
-  upgradeChannel: z.string().optional(),
-  connectionStatus: z.string(),
-  primarySipUrl: z.string().optional(),
-  activeInterface: z.string().optional(),
-  devicePlatform: z.string().optional(),
-  tags: z.array(z.string()),
-  errorCodes: z.array(z.string()),
-  placeId: z.string().optional(),
-  workspaceId: z.string().optional(),
-  locationId: z.string().optional(),
-  created: z.string().optional(),
-  firstSeen: z.string().optional(),
-  lastSeen: z.string().optional(),
 }).passthrough();
 
 const WorkspaceSchema = z.object({
   id: z.string(),
   displayName: z.string(),
-  orgId: z.string().optional(),
-  workspaceLocationId: z.string().optional(),
-  floorId: z.string().optional(),
-  capacity: z.number().optional(),
-  type: z.string().optional(),
-  sipAddress: z.string().optional(),
-  calling: z.string().optional(),
-  calendar: z.object({
-    type: z.string().optional(),
-    emailAddress: z.string().optional(),
-  }).optional(),
-  notes: z.string().optional(),
-  created: z.string().optional(),
-  lastModified: z.string().optional(),
 }).passthrough();
 
 export const model = {
   type: "@dougschaefer/cisco-collaboration-endpoints-device",
-  version: "2026.03.13.2",
+  version: "2026.03.16.4",
   globalArguments: WebexGlobalArgsSchema,
   resources: {
     device: {
@@ -463,8 +431,8 @@ export const model = {
         command: z.string().describe(
           "xAPI command name (e.g., 'Audio.Volume.Set', 'Standby.Activate', 'SystemUnit.Boot')",
         ),
-        args: z.record(z.unknown()).optional().describe(
-          "Command arguments as key-value pairs",
+        commandArgs: z.string().optional().describe(
+          "Command arguments as JSON string (e.g., '{\"Level\": 50}')",
         ),
         body: z.string().optional().describe(
           "Command body content (used by commands like Macros.Macro.Save)",
@@ -474,7 +442,7 @@ export const model = {
         args: {
           deviceId: string;
           command: string;
-          args?: Record<string, unknown>;
+          commandArgs?: string;
           body?: string;
         },
         context: {
@@ -484,11 +452,14 @@ export const model = {
           };
         },
       ) => {
+        const cmdArgs = args.commandArgs
+          ? JSON.parse(args.commandArgs)
+          : undefined;
         const result = await xapiCommand(
           args.command,
           args.deviceId,
           context.globalArgs,
-          args.args,
+          cmdArgs,
           args.body,
         );
 

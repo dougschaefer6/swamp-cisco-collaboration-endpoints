@@ -18,7 +18,7 @@ Built for MSP environments where you're managing Cisco endpoints across multiple
 | `enableMacros` | Enable the macro runtime (`Macros.Mode=On`, `Macros.AutoStart=On`) |
 | `healthCheck` | Connection status, firmware, uptime, standby, network, platform detection |
 | `setConfiguration` | Apply device configuration patches (JSON Patch format) |
-| `executeCommand` | Execute arbitrary xAPI commands via cloud proxy |
+| `executeCommand` | Execute arbitrary xAPI commands via cloud proxy (args passed as JSON string) |
 | `updateTags` | Set device tags for fleet organization |
 | `listWorkspaces` | List Webex workspaces with calendar/calling info |
 | `getWorkspace` | Get workspace details by ID |
@@ -99,6 +99,24 @@ The extension uses these Webex Control Hub API endpoints:
 | `/v1/workspaces/{id}` | GET | Get workspace details |
 
 Base URL: `https://webexapis.com/v1`
+
+## Changelog
+
+### 2026.03.16.4
+
+**Bug fixes — cloud xAPI and swamp compatibility**
+
+The `Macros.Macro.Get` command was passing `{ Name: "*", Content: "False" }` to list all macros on a device. The wildcard `*` works when calling xAPI directly on-device, but fails through the Webex cloud proxy with "No such macro." The `list` method now passes empty arguments `{}`, which correctly returns all macros.
+
+The `executeCommand` method's `args` parameter previously used `z.record(z.unknown())` for arbitrary key-value command arguments. This triggers a Zod cross-instance schema resolution bug in the swamp compiled binary ([systeminit/swamp#723](https://github.com/systeminit/swamp/issues/723)) where `z.unknown()` created by the extension's Zod instance cannot be processed by swamp's internal `toJSONSchema()`. The parameter has been changed to `commandArgs: z.string().optional()` — pass command arguments as a JSON string (e.g., `'{"Level": 50}'`), which is parsed at runtime.
+
+Boolean method arguments (`transpile`, `removeExisting`) across the `save`, `deploy`, and `deployFleet` methods used `z.boolean().default(true|false)`, which also triggered the Zod cross-instance bug. These have been changed to `z.boolean().optional()` with runtime defaults (`transpile` defaults to `true`, `removeExisting` defaults to `false`).
+
+The `baseUrl` field in the shared `WebexGlobalArgsSchema` used `z.string().default(...)` which is similarly incompatible. Changed to `z.string().optional()` with a runtime fallback to `https://webexapis.com/v1`.
+
+### 2026.03.13.2
+
+Initial release with device and macro management models.
 
 ## License
 

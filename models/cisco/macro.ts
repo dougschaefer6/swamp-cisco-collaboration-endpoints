@@ -30,7 +30,7 @@ const DeploymentResultSchema = z.object({
 
 export const model = {
   type: "@dougschaefer/cisco-collaboration-endpoints-macro",
-  version: "2026.03.13.2",
+  version: "2026.03.16.4",
   globalArguments: WebexGlobalArgsSchema,
   resources: {
     macro: {
@@ -68,7 +68,7 @@ export const model = {
           "Macros.Macro.Get",
           args.deviceId,
           context.globalArgs,
-          { Name: "*", Content: "False" },
+          {},
         )) as Record<string, unknown>;
 
         const inner = result.result as Record<string, unknown> || {};
@@ -155,8 +155,8 @@ export const model = {
           "Macro name (alphanumeric and underscores)",
         ),
         content: z.string().describe("JavaScript macro source code"),
-        transpile: z.boolean().default(true).describe(
-          "Whether to transpile ES6+ to ES5 for the macro engine",
+        transpile: z.boolean().optional().describe(
+          "Whether to transpile ES6+ to ES5 for the macro engine (defaults to true)",
         ),
       }),
       execute: async (
@@ -185,7 +185,7 @@ export const model = {
           {
             Name: args.macroName,
             Overwrite: "True",
-            Transpile: args.transpile ? "True" : "False",
+            Transpile: (args.transpile !== false) ? "True" : "False",
           },
           args.content,
         );
@@ -359,11 +359,11 @@ export const model = {
           "Macro name (alphanumeric and underscores)",
         ),
         content: z.string().describe("JavaScript macro source code"),
-        transpile: z.boolean().default(true).describe(
-          "Whether to transpile ES6+ to ES5",
+        transpile: z.boolean().optional().describe(
+          "Whether to transpile ES6+ to ES5 (defaults to true)",
         ),
-        removeExisting: z.boolean().default(false).describe(
-          "Remove existing macro with same name before saving (clean deploy)",
+        removeExisting: z.boolean().optional().describe(
+          "Remove existing macro with same name before saving (clean deploy, defaults to false)",
         ),
       }),
       execute: async (
@@ -443,7 +443,7 @@ export const model = {
             {
               Name: args.macroName,
               Overwrite: "True",
-              Transpile: args.transpile ? "True" : "False",
+              Transpile: (args.transpile !== false) ? "True" : "False",
             },
             args.content,
           );
@@ -547,11 +547,11 @@ export const model = {
           "Macro name (alphanumeric and underscores)",
         ),
         content: z.string().describe("JavaScript macro source code"),
-        transpile: z.boolean().default(true).describe(
-          "Whether to transpile ES6+ to ES5",
+        transpile: z.boolean().optional().describe(
+          "Whether to transpile ES6+ to ES5 (defaults to true)",
         ),
-        removeExisting: z.boolean().default(false).describe(
-          "Remove existing macro before saving on each device",
+        removeExisting: z.boolean().optional().describe(
+          "Remove existing macro before saving on each device (defaults to false)",
         ),
       }),
       execute: async (
@@ -636,7 +636,7 @@ export const model = {
               {
                 Name: args.macroName,
                 Overwrite: "True",
-                Transpile: args.transpile ? "True" : "False",
+                Transpile: (args.transpile !== false) ? "True" : "False",
               },
               args.content,
             );
