@@ -12,5 +12,5 @@ labels:
   - conferencing
   - msp
 models:
-  - models/cisco/device.ts
-  - models/cisco/macro.ts
+  - cisco/device.ts
+  - cisco/macro.ts

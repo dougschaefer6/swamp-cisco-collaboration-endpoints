@@ -31,6 +31,18 @@ export const WebexGlobalArgsSchema = z.object({
 
 export type WebexGlobalArgs = z.infer<typeof WebexGlobalArgsSchema>;
 
+/** Build a full URL from a relative path and the configured base URL. */
+function buildUrl(
+  path: string,
+  globalArgs: WebexGlobalArgs,
+): URL {
+  const base = (globalArgs.baseUrl || "https://webexapis.com/v1").replace(
+    /\/?$/,
+    "/",
+  );
+  return new URL(path.replace(/^\//, ""), base);
+}
+
 export async function webexApi(
   path: string,
   globalArgs: WebexGlobalArgs,
@@ -40,7 +52,7 @@ export async function webexApi(
     params?: Record<string, string>;
   },
 ): Promise<unknown> {
-  const url = new URL(path, globalArgs.baseUrl || "https://webexapis.com/v1");
+  const url = buildUrl(path, globalArgs);
   if (options?.params) {
     for (const [k, v] of Object.entries(options.params)) {
       if (v !== undefined && v !== "") url.searchParams.set(k, v);
@@ -106,10 +118,7 @@ export async function xapiStatus(
   globalArgs: WebexGlobalArgs,
   ...names: string[]
 ): Promise<Record<string, unknown>> {
-  const url = new URL(
-    "/v1/xapi/status",
-    globalArgs.baseUrl || "https://webexapis.com/v1",
-  );
+  const url = buildUrl("xapi/status", globalArgs);
   url.searchParams.set("deviceId", deviceId);
   for (const name of names.slice(0, 10)) {
     url.searchParams.append("name", name);
@@ -139,10 +148,7 @@ export async function patchDeviceConfig(
   globalArgs: WebexGlobalArgs,
   patches: Array<{ op: string; path: string; value: string }>,
 ): Promise<unknown> {
-  const url = new URL(
-    "/v1/deviceConfigurations",
-    globalArgs.baseUrl || "https://webexapis.com/v1",
-  );
+  const url = buildUrl("deviceConfigurations", globalArgs);
   url.searchParams.set("deviceId", deviceId);
 
   const resp = await fetch(url.toString(), {
@@ -176,7 +182,7 @@ export async function webexPaginate(
   const allItems: Array<Record<string, unknown>> = [];
   let currentUrl: string | null = null;
 
-  const url = new URL(path, globalArgs.baseUrl || "https://webexapis.com/v1");
+  const url = buildUrl(path, globalArgs);
   if (params) {
     for (const [k, v] of Object.entries(params)) {
       if (v !== undefined && v !== "") url.searchParams.set(k, v);
