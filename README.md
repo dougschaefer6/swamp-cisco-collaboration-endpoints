@@ -1,82 +1,42 @@
 # @dougschaefer/cisco-collaboration-endpoints
 
-Cisco RoomOS device and macro management extension for [Swamp](https://swamp.club) — programmatic device inventory, health checks, xAPI command execution, configuration management, macro deployment, and fleet operations via the Webex Control Hub cloud API.
+Cisco RoomOS device and macro management for [Swamp](https://swamp.club) via the Webex Control Hub cloud xAPI. The device model covers inventory, health checks, xAPI command execution, configuration patches, status queries, and workspace management, while the macro model handles the full lifecycle from save and activate through fleet-wide deployment with per-device error isolation. Works with Room Kit, Board, Desk, and codec endpoints, including devices running in MTR mode where xAPI commands and macros remain fully functional even though the configuration and status surfaces are reduced.
 
-Built for MSP environments where you're managing Cisco endpoints across multiple client orgs with vault-based credential isolation.
+## Models
 
-## What's in the box
+| Model Type | Description |
+|------------|-------------|
+| `cisco-collaboration-endpoints-device` | Device inventory, health, xAPI commands, configuration, status, and workspace management |
+| `cisco-collaboration-endpoints-macro` | Macro save, activate, deploy, and fleet push with audit trails |
 
-### Models
-
-**cisco-device** — Device inventory, health, configuration, and workspace management.
+### cisco-collaboration-endpoints-device
 
 | Method | Description |
 |--------|-------------|
-| `list` | List all devices in the org with optional filters (product, connection status, tag, type) |
+| `list` | List all devices in the org, with optional filters by product, connection status, tag, or type |
 | `get` | Get a single device by ID |
-| `getStatus` | Query xAPI status values — uses specific paths safe for MTR and native mode |
-| `enableMacros` | Enable the macro runtime (`Macros.Mode=On`, `Macros.AutoStart=On`) |
-| `healthCheck` | Connection status, firmware, uptime, standby, network, platform detection |
-| `setConfiguration` | Apply device configuration patches (JSON Patch format) |
-| `executeCommand` | Execute arbitrary xAPI commands via cloud proxy (args passed as JSON string) |
-| `updateTags` | Set device tags for fleet organization |
-| `listWorkspaces` | List Webex workspaces with calendar/calling info |
+| `health` | Connection status, firmware version, uptime, standby state, network info, and platform detection |
+| `runCommand` | Execute an arbitrary xAPI command via the Webex cloud proxy (pass arguments as a JSON string) |
+| `getStatus` | Query xAPI status values using specific paths safe for both native and MTR modes |
+| `getConfiguration` | Retrieve device configuration values |
+| `setConfiguration` | Apply configuration patches in JSON Patch format |
+| `listWorkspaces` | List Webex workspaces with calendar and calling information |
 | `getWorkspace` | Get workspace details by ID |
+| `refreshToken` | Refresh the Webex OAuth access token using the stored refresh token |
 
-**cisco-macro** — Full macro lifecycle management with deployment audit trails.
+### cisco-collaboration-endpoints-macro
 
 | Method | Description |
 |--------|-------------|
-| `list` | List all macros on a device (names and activation state) |
+| `list` | List all macros on a device with names and activation state |
 | `get` | Retrieve a macro's source code from a device |
-| `save` | Upload macro source (with optional ES6→ES5 transpile) |
+| `save` | Upload macro source to a device (with optional ES6 to ES5 transpile) |
 | `activate` | Activate a saved macro |
-| `deactivate` | Deactivate without removing |
-| `remove` | Delete a macro from a device |
-| `restartRuntime` | Restart the macro engine on a device |
-| `deploy` | Full lifecycle: enable mode → remove existing → save → activate → restart (step-by-step audit) |
-| `deployFleet` | Deploy to multiple devices with error isolation per device |
-
-## Authentication
-
-Uses a **Webex Service App** (OAuth2) for API access. Credentials are resolved from the Swamp vault at runtime:
-
-```yaml
-globalArguments:
-  accessToken:   ${{ vault.get(<client-vault>, webex-access-token) }}
-  clientId:      ${{ vault.get(<client-vault>, webex-client-id) }}
-  clientSecret:  ${{ vault.get(<client-vault>, webex-client-secret) }}
-  refreshToken:  ${{ vault.get(<client-vault>, webex-refresh-token) }}
-```
-
-Each client org authorizes the service app independently and gets its own token pair. The service app itself (client ID/secret) is shared, but access tokens are org-scoped — one client's token can never access another client's devices.
-
-### Required Webex Scopes
-
-- `spark:devices_read` / `spark:devices_write` — device inventory and metadata
-- `spark:xapi_statuses` / `spark:xapi_commands` — xAPI status queries and command execution
-- `spark-admin:devices_read` / `spark-admin:devices_write` — admin-level device operations
-- `spark:workspaces_read` — workspace listing
-
-## MTR Mode Compatibility
-
-Cisco devices running Microsoft Teams Rooms (MTR) have a reduced xAPI surface, but **macros work fine**. The key rules:
-
-- **Commands** — All commands work in all modes. Macro lifecycle (Save, Activate, Remove, Get, Runtime.Restart) is fully functional on MTR devices via cloud xAPI.
-- **Configurations** — ~83% are available in MTR mode (tagged with `include_for_extension: "mtr"`). `Macros.Mode` and `Macros.AutoStart` are both available.
-- **Statuses** — ~70% respond in MTR mode. Untagged paths will timeout. Always query specific named paths, not wildcards.
-- **Events** — All events are available. The macro engine can subscribe to xAPI events normally.
-
-The `healthCheck` and `getStatus` methods use MTR-safe status paths by default.
-
-### Writing Macros for MTR Devices
-
-- Wrap `xapi.Status` reads in a timeout (some paths hang on MTR): `Promise.race([xapi.Status.Foo.get(), timeout(5000)])`
-- Use PascalCase xAPI paths: `xapi.Status.SystemUnit.Software.Version.get()`
-- Files must be `.js` — RoomOS won't load `.json` as macros
-- `xapi.Command.Presentation.Stop()` takes `ConnectorId` (integer) or no args — not `PresentationSource` strings
-- Call state: `xapi.Status.SystemUnit.State.System.get()` → check for `"InCall"` (not `Call.NumberOfActiveCalls`)
-- Older firmware may have slower xAPI response times in MTR mode — build in retries
+| `deactivate` | Deactivate a macro without removing it |
+| `delete` | Remove a macro from a device |
+| `deploy` | Full lifecycle deployment: enable macro mode, optionally remove existing, save, activate, and restart the runtime, with step-by-step audit output |
+| `fleetPush` | Deploy a macro to multiple devices with error isolation per device |
+| `listFromDevice` | List macros directly from a specific device |
 
 ## Installation
 
@@ -84,40 +44,57 @@ The `healthCheck` and `getStatus` methods use MTR-safe status paths by default.
 swamp extension pull @dougschaefer/cisco-collaboration-endpoints
 ```
 
-## API Reference
+## Setup
 
-The extension uses these Webex Control Hub API endpoints:
+The extension authenticates against the Webex Control Hub API using OAuth tokens. You can use either a Webex Service App (recommended for production) or a personal access token for testing.
 
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/v1/devices` | GET | List devices (paginated via Link header) |
-| `/v1/devices/{id}` | GET/PATCH/DELETE | Device CRUD |
-| `/v1/xapi/command/{name}` | POST | Execute xAPI commands on a device |
-| `/v1/xapi/status` | GET | Query device status values (up to 10 paths) |
-| `/v1/deviceConfigurations` | PATCH | Apply config patches (`application/json-patch+json`) |
-| `/v1/workspaces` | GET | List workspaces |
-| `/v1/workspaces/{id}` | GET | Get workspace details |
+1. Create a Webex integration or service app at [developer.webex.com](https://developer.webex.com) with these scopes:
 
-Base URL: `https://webexapis.com/v1`
+   - `spark:devices_read`, `spark:devices_write` (device inventory and metadata)
+   - `spark:xapi_statuses`, `spark:xapi_commands` (xAPI status queries and command execution)
+   - `spark-admin:devices_read`, `spark-admin:devices_write` (admin-level device operations)
+   - `spark:workspaces_read` (workspace listing)
 
-## Changelog
+2. Create a Swamp vault and store your credentials:
 
-### 2026.03.16.4
+```bash
+swamp vault create webex --type local_encryption
+swamp vault set webex access-token <your-access-token>
+swamp vault set webex refresh-token <your-refresh-token>
+swamp vault set webex client-id <your-client-id>
+swamp vault set webex client-secret <your-client-secret>
+```
 
-**Bug fixes — cloud xAPI and swamp compatibility**
+3. Create a model instance, wiring credentials from vault:
 
-The `Macros.Macro.Get` command was passing `{ Name: "*", Content: "False" }` to list all macros on a device. The wildcard `*` works when calling xAPI directly on-device, but fails through the Webex cloud proxy with "No such macro." The `list` method now passes empty arguments `{}`, which correctly returns all macros.
+```bash
+swamp model create --type @dougschaefer/cisco-collaboration-endpoints-device --name cisco-devices
+```
 
-The `executeCommand` method's `args` parameter previously used `z.record(z.unknown())` for arbitrary key-value command arguments. This triggers a Zod cross-instance schema resolution bug in the swamp compiled binary ([systeminit/swamp#723](https://github.com/systeminit/swamp/issues/723)) where `z.unknown()` created by the extension's Zod instance cannot be processed by swamp's internal `toJSONSchema()`. The parameter has been changed to `commandArgs: z.string().optional()` — pass command arguments as a JSON string (e.g., `'{"Level": 50}'`), which is parsed at runtime.
+When prompted for global arguments, use vault references:
 
-Boolean method arguments (`transpile`, `removeExisting`) across the `save`, `deploy`, and `deployFleet` methods used `z.boolean().default(true|false)`, which also triggered the Zod cross-instance bug. These have been changed to `z.boolean().optional()` with runtime defaults (`transpile` defaults to `true`, `removeExisting` defaults to `false`).
+```
+accessToken:  ${{ vault.get(webex, access-token) }}
+refreshToken: ${{ vault.get(webex, refresh-token) }}
+clientId:     ${{ vault.get(webex, client-id) }}
+clientSecret: ${{ vault.get(webex, client-secret) }}
+```
 
-The `baseUrl` field in the shared `WebexGlobalArgsSchema` used `z.string().default(...)` which is similarly incompatible. Changed to `z.string().optional()` with a runtime fallback to `https://webexapis.com/v1`.
+4. Run methods against the instance:
 
-### 2026.03.13.2
+```bash
+swamp model execute cisco-devices --method list
+swamp model execute cisco-devices --method health
+```
 
-Initial release with device and macro management models.
+## API Compatibility
+
+All device and macro operations use the Webex Control Hub REST API at `https://webexapis.com/v1`, specifically the `/v1/devices`, `/v1/xapi/command`, `/v1/xapi/status`, `/v1/deviceConfigurations`, and `/v1/workspaces` endpoints.
+
+MTR-mode devices accept xAPI commands normally through the cloud proxy. The `include_for_extension` flag that limits certain configurations and statuses in MTR mode only applies to config and status queries, not to commands, so macro lifecycle operations (save, activate, remove, restart runtime) work on MTR devices the same as native RoomOS. The `health` and `getStatus` methods use MTR-safe status paths by default.
+
+Token refresh is built into the device model via the `refreshToken` method, which exchanges the stored refresh token for a new access token through the Webex OAuth flow.
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE)
