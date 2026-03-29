@@ -1,7 +1,7 @@
 manifestVersion: 1
 name: "@dougschaefer/cisco-collaboration-endpoints"
-version: "2026.03.16.4"
-description: "Cisco RoomOS device and macro management via Webex Control Hub — device inventory, health checks, workspace management, xAPI command execution, status queries, configuration management, macro lifecycle (save, activate, deploy, fleet push), and MTR-aware operations. Multi-tenant with vault-based credential resolution per client org."
+version: "2026.03.29.1"
+description: "Cisco RoomOS device and macro management via Webex Control Hub — device inventory, health checks, workspace management, xAPI command execution, status queries, configuration management, macro lifecycle (save, activate, deploy, fleet push), and MTR-aware operations. Vault-based credential resolution."
 repository: https://github.com/dougschaefer6/swamp-cisco-collaboration-endpoints
 labels:
   - cisco
@@ -10,7 +10,6 @@ labels:
   - macros
   - av
   - conferencing
-  - msp
 models:
   - cisco/device.ts
   - cisco/macro.ts
