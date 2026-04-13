@@ -179,7 +179,7 @@ export const model = {
         for (const device of devices) {
           const name = sanitizeId(
             (device.displayName as string) + "-" +
-              (device.serial as string || device.id as string).slice(-8),
+              (device.id as string).slice(-12),
           );
           const handle = await context.writeResource("device", name, device);
           handles.push(handle);

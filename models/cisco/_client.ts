@@ -11,16 +11,16 @@ import { z } from "npm:zod@4.3.6";
  */
 
 export const WebexGlobalArgsSchema = z.object({
-  accessToken: z.string().describe(
+  accessToken: z.string().meta({ sensitive: true }).describe(
     "Webex API access token. Use: ${{ vault.get(<client-vault>, webex-access-token) }}",
   ),
   clientId: z.string().optional().describe(
     "Webex service app client ID for token refresh. Use: ${{ vault.get(<client-vault>, webex-client-id) }}",
   ),
-  clientSecret: z.string().optional().describe(
+  clientSecret: z.string().optional().meta({ sensitive: true }).describe(
     "Webex service app client secret for token refresh. Use: ${{ vault.get(<client-vault>, webex-client-secret) }}",
   ),
-  refreshToken: z.string().optional().describe(
+  refreshToken: z.string().optional().meta({ sensitive: true }).describe(
     "Webex refresh token for token refresh. Use: ${{ vault.get(<client-vault>, webex-refresh-token) }}",
   ),
   baseUrl: z
@@ -40,7 +40,11 @@ export async function webexApi(
     params?: Record<string, string>;
   },
 ): Promise<unknown> {
-  const url = new URL(path, globalArgs.baseUrl || "https://webexapis.com/v1");
+  const base = (globalArgs.baseUrl || "https://webexapis.com/v1").replace(
+    /\/$/,
+    "",
+  );
+  const url = new URL(`${base}${path}`);
   if (options?.params) {
     for (const [k, v] of Object.entries(options.params)) {
       if (v !== undefined && v !== "") url.searchParams.set(k, v);
@@ -106,10 +110,11 @@ export async function xapiStatus(
   globalArgs: WebexGlobalArgs,
   ...names: string[]
 ): Promise<Record<string, unknown>> {
-  const url = new URL(
-    "/v1/xapi/status",
-    globalArgs.baseUrl || "https://webexapis.com/v1",
+  const statusBase = (globalArgs.baseUrl || "https://webexapis.com").replace(
+    /\/$/,
+    "",
   );
+  const url = new URL(`${statusBase}/v1/xapi/status`);
   url.searchParams.set("deviceId", deviceId);
   for (const name of names.slice(0, 10)) {
     url.searchParams.append("name", name);
@@ -139,10 +144,11 @@ export async function patchDeviceConfig(
   globalArgs: WebexGlobalArgs,
   patches: Array<{ op: string; path: string; value: string }>,
 ): Promise<unknown> {
-  const url = new URL(
-    "/v1/deviceConfigurations",
-    globalArgs.baseUrl || "https://webexapis.com/v1",
+  const configBase = (globalArgs.baseUrl || "https://webexapis.com").replace(
+    /\/$/,
+    "",
   );
+  const url = new URL(`${configBase}/v1/deviceConfigurations`);
   url.searchParams.set("deviceId", deviceId);
 
   const resp = await fetch(url.toString(), {
@@ -176,7 +182,9 @@ export async function webexPaginate(
   const allItems: Array<Record<string, unknown>> = [];
   let currentUrl: string | null = null;
 
-  const url = new URL(path, globalArgs.baseUrl || "https://webexapis.com/v1");
+  const paginateBase = (globalArgs.baseUrl || "https://webexapis.com/v1")
+    .replace(/\/$/, "");
+  const url = new URL(`${paginateBase}${path}`);
   if (params) {
     for (const [k, v] of Object.entries(params)) {
       if (v !== undefined && v !== "") url.searchParams.set(k, v);
