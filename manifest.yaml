@@ -1,8 +1,11 @@
 manifestVersion: 1
 name: "@dougschaefer/cisco-collaboration-endpoints"
-version: "2026.04.13.1"
+version: "2026.04.27.1"
 description: "Cisco RoomOS device and macro management via Webex Control Hub — device inventory, health checks, workspace management, xAPI command execution, status queries, configuration management, macro lifecycle (save, activate, deploy, fleet push), and MTR-aware operations. Vault-based credential resolution."
 repository: https://github.com/dougschaefer6/swamp-cisco-collaboration-endpoints
+additionalFiles:
+  - README.md
+  - LICENSE.txt
 labels:
   - cisco
   - webex
