@@ -41,7 +41,7 @@ const DeploymentResultSchema = z.object({
  */
 export const model = {
   type: "@dougschaefer/cisco-collaboration-endpoints-macro",
-  version: "2026.03.16.4",
+  version: "2026.05.26.1",
   globalArguments: WebexGlobalArgsSchema,
   resources: {
     macro: {
