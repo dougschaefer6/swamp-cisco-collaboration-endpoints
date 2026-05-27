@@ -2,9 +2,121 @@ import { z } from "npm:zod@4.3.6";
 import {
   patchDeviceConfig,
   sanitizeId,
+  WebexGlobalArgs,
   WebexGlobalArgsSchema,
   xapiCommand,
 } from "./_client.ts";
+
+// --- Shared deploy helper ---
+// Used by both `deploy` (single device) and `deployFleet` (multi-device).
+// Not exported — internal to this module.
+async function deployMacroToDevice(
+  deviceId: string,
+  macroName: string,
+  content: string,
+  transpile: boolean,
+  removeExisting: boolean,
+  globalArgs: WebexGlobalArgs,
+): Promise<Array<{ step: string; success: boolean; error?: string }>> {
+  const steps: Array<{ step: string; success: boolean; error?: string }> = [];
+
+  // Step 1: Enable macro mode
+  try {
+    await patchDeviceConfig(deviceId, globalArgs, [
+      {
+        op: "replace",
+        path: "Macros.Mode/sources/configured/value",
+        value: "On",
+      },
+      {
+        op: "replace",
+        path: "Macros.AutoStart/sources/configured/value",
+        value: "On",
+      },
+    ]);
+    steps.push({ step: "enableMacroMode", success: true });
+  } catch (e) {
+    steps.push({
+      step: "enableMacroMode",
+      success: false,
+      error: (e as Error).message,
+    });
+  }
+
+  // Step 2: Remove existing (if requested) — idempotent; ignore "not found"
+  if (removeExisting) {
+    try {
+      await xapiCommand("Macros.Macro.Remove", deviceId, globalArgs, {
+        Name: macroName,
+      });
+      steps.push({ step: "removeExisting", success: true });
+    } catch (e) {
+      const msg = String(e);
+      if (
+        msg.includes("not found") || msg.includes("Unknown") ||
+        msg.includes("No macro")
+      ) {
+        steps.push({ step: "removeExisting", success: true });
+      } else {
+        steps.push({
+          step: "removeExisting",
+          success: false,
+          error: msg,
+        });
+      }
+    }
+  }
+
+  // Step 3: Save
+  try {
+    await xapiCommand(
+      "Macros.Macro.Save",
+      deviceId,
+      globalArgs,
+      {
+        Name: macroName,
+        Overwrite: "True",
+        Transpile: (transpile !== false) ? "True" : "False",
+      },
+      content,
+    );
+    steps.push({ step: "save", success: true });
+  } catch (e) {
+    steps.push({
+      step: "save",
+      success: false,
+      error: (e as Error).message,
+    });
+  }
+
+  // Step 4: Activate
+  try {
+    await xapiCommand("Macros.Macro.Activate", deviceId, globalArgs, {
+      Name: macroName,
+    });
+    steps.push({ step: "activate", success: true });
+  } catch (e) {
+    steps.push({
+      step: "activate",
+      success: false,
+      error: (e as Error).message,
+    });
+  }
+
+  // Step 5: Restart runtime
+  try {
+    await xapiCommand("Macros.Runtime.Restart", deviceId, globalArgs);
+    steps.push({ step: "restartRuntime", success: true });
+  } catch (e) {
+    steps.push({
+      step: "restartRuntime",
+      success: false,
+      error: (e as Error).message,
+    });
+  }
+
+  return steps;
+}
 
 const MacroSchema = z.object({
   deviceId: z.string(),
@@ -41,7 +153,7 @@ const DeploymentResultSchema = z.object({
  */
 export const model = {
   type: "@dougschaefer/cisco-collaboration-endpoints-macro",
-  version: "2026.05.26.1",
+  version: "2026.05.27.1",
   globalArguments: WebexGlobalArgsSchema,
   resources: {
     macro: {
@@ -262,7 +374,8 @@ export const model = {
     },
 
     deactivate: {
-      description: "Deactivate a macro on a device by name.",
+      description:
+        "Deactivate a macro on a device by name. Idempotent — if the macro does not exist, logs and succeeds.",
       arguments: z.object({
         deviceId: z.string().describe("Webex device ID"),
         macroName: z.string().describe("Macro name to deactivate"),
@@ -276,17 +389,31 @@ export const model = {
           };
         },
       ) => {
-        await xapiCommand(
-          "Macros.Macro.Deactivate",
-          args.deviceId,
-          context.globalArgs,
-          { Name: args.macroName },
-        );
-
-        context.logger.info("Deactivated macro {macro} on device {id}", {
-          macro: args.macroName,
-          id: args.deviceId,
-        });
+        try {
+          await xapiCommand(
+            "Macros.Macro.Deactivate",
+            args.deviceId,
+            context.globalArgs,
+            { Name: args.macroName },
+          );
+          context.logger.info("Deactivated macro {macro} on device {id}", {
+            macro: args.macroName,
+            id: args.deviceId,
+          });
+        } catch (err) {
+          const msg = String(err);
+          if (
+            msg.includes("not found") || msg.includes("Unknown") ||
+            msg.includes("No macro")
+          ) {
+            context.logger.info(
+              "Macro {macro} not present on device {id} — already deactivated",
+              { macro: args.macroName, id: args.deviceId },
+            );
+          } else {
+            throw err;
+          }
+        }
 
         return {
           data: {
@@ -302,7 +429,8 @@ export const model = {
     },
 
     remove: {
-      description: "Remove a macro from a device by name.",
+      description:
+        "Remove a macro from a device by name. Idempotent — if the macro does not exist, logs and succeeds.",
       arguments: z.object({
         deviceId: z.string().describe("Webex device ID"),
         macroName: z.string().describe("Macro name to remove"),
@@ -316,17 +444,31 @@ export const model = {
           };
         },
       ) => {
-        await xapiCommand(
-          "Macros.Macro.Remove",
-          args.deviceId,
-          context.globalArgs,
-          { Name: args.macroName },
-        );
-
-        context.logger.info("Removed macro {macro} from device {id}", {
-          macro: args.macroName,
-          id: args.deviceId,
-        });
+        try {
+          await xapiCommand(
+            "Macros.Macro.Remove",
+            args.deviceId,
+            context.globalArgs,
+            { Name: args.macroName },
+          );
+          context.logger.info("Removed macro {macro} from device {id}", {
+            macro: args.macroName,
+            id: args.deviceId,
+          });
+        } catch (err) {
+          const msg = String(err);
+          if (
+            msg.includes("not found") || msg.includes("Unknown") ||
+            msg.includes("No macro")
+          ) {
+            context.logger.info(
+              "Macro {macro} not present on device {id} — nothing to remove",
+              { macro: args.macroName, id: args.deviceId },
+            );
+          } else {
+            throw err;
+          }
+        }
 
         return { dataHandles: [] };
       },
@@ -397,108 +539,14 @@ export const model = {
           ) => Promise<unknown>;
         },
       ) => {
-        const steps: Array<{
-          step: string;
-          success: boolean;
-          error?: string;
-        }> = [];
-
-        // Step 1: Enable macro mode
-        try {
-          await patchDeviceConfig(args.deviceId, context.globalArgs, [
-            {
-              op: "replace",
-              path: "Macros.Mode/sources/configured/value",
-              value: "On",
-            },
-            {
-              op: "replace",
-              path: "Macros.AutoStart/sources/configured/value",
-              value: "On",
-            },
-          ]);
-          steps.push({ step: "enableMacroMode", success: true });
-        } catch (e) {
-          steps.push({
-            step: "enableMacroMode",
-            success: false,
-            error: (e as Error).message,
-          });
-        }
-
-        // Step 2: Remove existing (if requested)
-        if (args.removeExisting) {
-          try {
-            await xapiCommand(
-              "Macros.Macro.Remove",
-              args.deviceId,
-              context.globalArgs,
-              { Name: args.macroName },
-            );
-            steps.push({ step: "removeExisting", success: true });
-          } catch (e) {
-            steps.push({
-              step: "removeExisting",
-              success: false,
-              error: (e as Error).message,
-            });
-          }
-        }
-
-        // Step 3: Save macro
-        try {
-          await xapiCommand(
-            "Macros.Macro.Save",
-            args.deviceId,
-            context.globalArgs,
-            {
-              Name: args.macroName,
-              Overwrite: "True",
-              Transpile: (args.transpile !== false) ? "True" : "False",
-            },
-            args.content,
-          );
-          steps.push({ step: "save", success: true });
-        } catch (e) {
-          steps.push({
-            step: "save",
-            success: false,
-            error: (e as Error).message,
-          });
-        }
-
-        // Step 4: Activate
-        try {
-          await xapiCommand(
-            "Macros.Macro.Activate",
-            args.deviceId,
-            context.globalArgs,
-            { Name: args.macroName },
-          );
-          steps.push({ step: "activate", success: true });
-        } catch (e) {
-          steps.push({
-            step: "activate",
-            success: false,
-            error: (e as Error).message,
-          });
-        }
-
-        // Step 5: Restart runtime
-        try {
-          await xapiCommand(
-            "Macros.Runtime.Restart",
-            args.deviceId,
-            context.globalArgs,
-          );
-          steps.push({ step: "restartRuntime", success: true });
-        } catch (e) {
-          steps.push({
-            step: "restartRuntime",
-            success: false,
-            error: (e as Error).message,
-          });
-        }
+        const steps = await deployMacroToDevice(
+          args.deviceId,
+          args.macroName,
+          args.content,
+          args.transpile,
+          args.removeExisting,
+          context.globalArgs,
+        );
 
         const allSuccess = steps.every((s) => s.success);
         const deploymentRecord = {
@@ -590,108 +638,14 @@ export const model = {
         let failCount = 0;
 
         for (const deviceId of args.deviceIds) {
-          const steps: Array<{
-            step: string;
-            success: boolean;
-            error?: string;
-          }> = [];
-
-          // Enable macro mode
-          try {
-            await patchDeviceConfig(deviceId, context.globalArgs, [
-              {
-                op: "replace",
-                path: "Macros.Mode/sources/configured/value",
-                value: "On",
-              },
-              {
-                op: "replace",
-                path: "Macros.AutoStart/sources/configured/value",
-                value: "On",
-              },
-            ]);
-            steps.push({ step: "enableMacroMode", success: true });
-          } catch (e) {
-            steps.push({
-              step: "enableMacroMode",
-              success: false,
-              error: (e as Error).message,
-            });
-          }
-
-          // Remove existing if requested
-          if (args.removeExisting) {
-            try {
-              await xapiCommand(
-                "Macros.Macro.Remove",
-                deviceId,
-                context.globalArgs,
-                { Name: args.macroName },
-              );
-              steps.push({ step: "removeExisting", success: true });
-            } catch (e) {
-              steps.push({
-                step: "removeExisting",
-                success: false,
-                error: (e as Error).message,
-              });
-            }
-          }
-
-          // Save
-          try {
-            await xapiCommand(
-              "Macros.Macro.Save",
-              deviceId,
-              context.globalArgs,
-              {
-                Name: args.macroName,
-                Overwrite: "True",
-                Transpile: (args.transpile !== false) ? "True" : "False",
-              },
-              args.content,
-            );
-            steps.push({ step: "save", success: true });
-          } catch (e) {
-            steps.push({
-              step: "save",
-              success: false,
-              error: (e as Error).message,
-            });
-          }
-
-          // Activate
-          try {
-            await xapiCommand(
-              "Macros.Macro.Activate",
-              deviceId,
-              context.globalArgs,
-              { Name: args.macroName },
-            );
-            steps.push({ step: "activate", success: true });
-          } catch (e) {
-            steps.push({
-              step: "activate",
-              success: false,
-              error: (e as Error).message,
-            });
-          }
-
-          // Restart runtime
-          try {
-            await xapiCommand(
-              "Macros.Runtime.Restart",
-              deviceId,
-              context.globalArgs,
-            );
-            steps.push({ step: "restartRuntime", success: true });
-          } catch (e) {
-            steps.push({
-              step: "restartRuntime",
-              success: false,
-              error: (e as Error).message,
-            });
-          }
+          const steps = await deployMacroToDevice(
+            deviceId,
+            args.macroName,
+            args.content,
+            args.transpile,
+            args.removeExisting,
+            context.globalArgs,
+          );
 
           const allSuccess = steps.every((s) => s.success);
           if (allSuccess) successCount++;
@@ -725,6 +679,99 @@ export const model = {
         );
 
         return { dataHandles: handles };
+      },
+    },
+
+    sync: {
+      description:
+        "Refresh the macro inventory for a device — re-runs list and writes all macros as resources so CEL can reference current state. Use on a schedule to keep inventory fresh.",
+      arguments: z.object({
+        deviceId: z.string().describe("Webex device ID"),
+      }),
+      execute: async (args: { deviceId: string }, context: {
+        globalArgs: z.infer<typeof WebexGlobalArgsSchema>;
+        logger: { info: (msg: string, vars?: Record<string, unknown>) => void };
+        writeResource: (
+          type: string,
+          name: string,
+          data: unknown,
+        ) => Promise<unknown>;
+      }) => {
+        const result = (await xapiCommand(
+          "Macros.Macro.Get",
+          args.deviceId,
+          context.globalArgs,
+          {},
+        )) as Record<string, unknown>;
+
+        const inner = result.result as Record<string, unknown> || {};
+        const macros = (inner.Macro as Array<Record<string, unknown>>) || [];
+
+        context.logger.info(
+          "Sync: refreshed {count} macros on device {id}",
+          { count: macros.length, id: args.deviceId },
+        );
+
+        const handles = [];
+        for (const macro of macros) {
+          const name = sanitizeId(
+            `${args.deviceId.slice(-8)}-${macro.Name as string}`,
+          );
+          const handle = await context.writeResource("macro", name, {
+            deviceId: args.deviceId,
+            macroName: macro.Name,
+            active: macro.Active === "True",
+            deployedAt: new Date().toISOString(),
+          });
+          handles.push(handle);
+        }
+        return { dataHandles: handles };
+      },
+    },
+  },
+
+  checks: {
+    "webex-api-reachable": {
+      description:
+        "Verify the Webex API is reachable and the token is valid before pushing macro changes to devices.",
+      labels: ["live"],
+      appliesTo: [
+        "save",
+        "activate",
+        "deploy",
+        "deployFleet",
+        "remove",
+        "restartRuntime",
+        "enableMacros",
+      ],
+      execute: async (context: {
+        globalArgs: z.infer<typeof WebexGlobalArgsSchema>;
+      }) => {
+        try {
+          const base = (context.globalArgs.baseUrl ||
+            "https://webexapis.com/v1").replace(/\/$/, "");
+          const resp = await fetch(`${base}/people/me`, {
+            headers: {
+              "Authorization": `Bearer ${context.globalArgs.accessToken}`,
+              "Accept": "application/json",
+            },
+          });
+          if (!resp.ok) {
+            const body = await resp.text();
+            return {
+              pass: false,
+              errors: [`Webex API returned ${resp.status}: ${body}`],
+            };
+          }
+          return { pass: true };
+        } catch (err) {
+          return {
+            pass: false,
+            errors: [
+              `Webex API not reachable or token invalid: ${String(err)}`,
+            ],
+          };
+        }
       },
     },
   },

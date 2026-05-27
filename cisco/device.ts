@@ -10,7 +10,7 @@ import {
 } from "./_client.ts";
 
 /**
- * @dougschaefer/cisco-device — Cisco RoomOS device management via Webex Control Hub
+ * `@dougschaefer/cisco-collaboration-endpoints-device` — Cisco RoomOS device management via Webex Control Hub
  *
  * ═══════════════════════════════════════════════════════════════════════
  * WEBEX CONTROL HUB API REFERENCE
@@ -128,7 +128,7 @@ const WorkspaceSchema = z.object({
  */
 export const model = {
   type: "@dougschaefer/cisco-collaboration-endpoints-device",
-  version: "2026.05.26.1",
+  version: "2026.05.27.1",
   globalArguments: WebexGlobalArgsSchema,
   resources: {
     device: {
@@ -600,6 +600,62 @@ export const model = {
       },
     },
 
+    sync: {
+      description:
+        "Refresh the device inventory — re-runs list and writes all devices to resources so CEL can reference current state. Use on a schedule to keep inventory fresh.",
+      arguments: z.object({
+        product: z.string().optional().describe(
+          "Filter by product name (e.g., 'Cisco Codec Pro')",
+        ),
+        connectionStatus: z.string().optional().describe(
+          "Filter by connection status: connected, disconnected, connected_with_issues",
+        ),
+        tag: z.string().optional().describe("Filter by device tag"),
+        type: z.string().optional().describe(
+          "Filter by device type: roomdesk, phone, accessory, camera",
+        ),
+      }),
+      execute: async (args: Record<string, string | undefined>, context: {
+        globalArgs: z.infer<typeof WebexGlobalArgsSchema>;
+        logger: { info: (msg: string, vars?: Record<string, unknown>) => void };
+        writeResource: (
+          type: string,
+          name: string,
+          data: unknown,
+        ) => Promise<unknown>;
+      }) => {
+        const params: Record<string, string> = {};
+        if (args.product) params.product = args.product;
+        if (args.connectionStatus) {
+          params.connectionStatus = args.connectionStatus;
+        }
+        if (args.tag) params.tag = args.tag;
+        if (args.type) params.type = args.type;
+
+        const devices = await webexPaginate(
+          "/devices",
+          context.globalArgs,
+          params,
+        );
+
+        context.logger.info(
+          "Sync: refreshed {count} devices",
+          { count: devices.length },
+        );
+
+        const handles = [];
+        for (const device of devices) {
+          const name = sanitizeId(
+            (device.displayName as string) + "-" +
+              (device.id as string).slice(-12),
+          );
+          const handle = await context.writeResource("device", name, device);
+          handles.push(handle);
+        }
+        return { dataHandles: handles };
+      },
+    },
+
     getWorkspace: {
       description: "Get detailed information about a specific workspace by ID.",
       arguments: z.object({
@@ -630,6 +686,36 @@ export const model = {
         });
 
         return { dataHandles: [handle] };
+      },
+    },
+  },
+
+  checks: {
+    "webex-api-reachable": {
+      description:
+        "Verify the Webex API token is valid and the Control Hub is reachable before running mutating commands.",
+      labels: ["live"],
+      appliesTo: [
+        "setConfiguration",
+        "executeCommand",
+        "enableMacros",
+      ],
+      execute: async (context: {
+        globalArgs: z.infer<typeof WebexGlobalArgsSchema>;
+      }) => {
+        try {
+          // A lightweight read of the people/me endpoint validates auth without
+          // touching device state.
+          await webexApi("/people/me", context.globalArgs);
+          return { pass: true };
+        } catch (err) {
+          return {
+            pass: false,
+            errors: [
+              `Webex API not reachable or token invalid: ${String(err)}`,
+            ],
+          };
+        }
       },
     },
   },
