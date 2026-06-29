@@ -19,7 +19,7 @@ import {
  * Base URL: https://webexapis.com/v1
  * Auth: Bearer token from a Webex Service App (OAuth2 client_credentials + per-org refresh tokens)
  *
- * Key API surfaces used by this model and the companion @dougschaefer/cisco-collaboration-endpoints-macro model:
+ * Key API surfaces used by this model and the companion `@dougschaefer/cisco-collaboration-endpoints-macro` model:
  *
  * DEVICES API
  *   GET    /devices              — List all devices in the org (paginated, Link header)
@@ -114,6 +114,16 @@ const WorkspaceSchema = z.object({
   displayName: z.string(),
 }).passthrough();
 
+const UiExtensionsSchema = z.object({
+  deviceId: z.string(),
+  extensions: z.record(z.string(), z.unknown()).optional(),
+  panelCount: z.number().optional(),
+  xml: z.string().optional(),
+  byteLength: z.number().optional(),
+  pulledAt: z.string().optional(),
+  exportedAt: z.string().optional(),
+}).passthrough();
+
 /**
  * `@dougschaefer/cisco-collaboration-endpoints-device` model — Cisco
  * RoomOS device management via Webex Control Hub. List enumerates the
@@ -128,7 +138,7 @@ const WorkspaceSchema = z.object({
  */
 export const model = {
   type: "@dougschaefer/cisco-collaboration-endpoints-device",
-  version: "2026.05.27.1",
+  version: "2026.06.29.1",
   globalArguments: WebexGlobalArgsSchema,
   resources: {
     device: {
@@ -142,6 +152,13 @@ export const model = {
       description:
         "Webex workspace (room/space) with assigned devices, calendar integration, and calling configuration",
       schema: WorkspaceSchema,
+      lifetime: "infinite" as const,
+      garbageCollection: 10,
+    },
+    "ui-extensions": {
+      description:
+        "UI Extensions (in-room controls) pulled from a RoomOS device — custom panels, action buttons, and web-app launchers as configured on the endpoint, retrieved via the 'UserInterface Extensions List' xAPI command (the extraction analog of macro retrieval).",
+      schema: UiExtensionsSchema,
       lifetime: "infinite" as const,
       garbageCollection: 10,
     },
@@ -492,6 +509,111 @@ export const model = {
             }`,
           },
         };
+      },
+    },
+
+    listExtensions: {
+      description:
+        "Pull the UI Extensions (in-room controls — custom panels, action/home-screen buttons, and web-app launchers) configured on a device, via the 'UserInterface Extensions List' xAPI command. The extraction analog of macro retrieval (Macros.Macro.Get): captures the device's configured extension set so panels can be backed up, audited, or redeployed to other endpoints.",
+      arguments: z.object({
+        deviceId: z.string().describe("Webex device ID"),
+      }),
+      execute: async (
+        args: { deviceId: string },
+        context: {
+          globalArgs: z.infer<typeof WebexGlobalArgsSchema>;
+          logger: {
+            info: (msg: string, vars?: Record<string, unknown>) => void;
+          };
+          writeResource: (
+            type: string,
+            name: string,
+            data: unknown,
+          ) => Promise<unknown>;
+        },
+      ) => {
+        const result = (await xapiCommand(
+          "UserInterface.Extensions.List",
+          args.deviceId,
+          context.globalArgs,
+          {},
+        )) as Record<string, unknown>;
+
+        // The xAPI response nests the configured set under result.Extensions
+        // (Panel[], plus Version/ConfigId); fall back to result itself.
+        const inner = (result.result as Record<string, unknown>) || {};
+        const extensions = (inner.Extensions as Record<string, unknown>) ||
+          inner;
+        const panelsRaw = (extensions as Record<string, unknown>)?.Panel;
+        const panelCount = Array.isArray(panelsRaw) ? panelsRaw.length : 0;
+
+        context.logger.info(
+          "Pulled UI extensions from device {id}: {count} panel(s)",
+          { id: args.deviceId, count: panelCount },
+        );
+
+        const handle = await context.writeResource(
+          "ui-extensions",
+          `ui-ext-${sanitizeId(args.deviceId).slice(-12)}`,
+          {
+            deviceId: args.deviceId,
+            extensions: inner,
+            panelCount,
+            pulledAt: new Date().toISOString(),
+          },
+        );
+        return { dataHandles: [handle] };
+      },
+    },
+
+    exportExtensions: {
+      description:
+        "Export the FULL UI Extensions definition (panel XML) from a device via 'UserInterface Extensions Export' with EmbedData=On — the redeploy-grade backup analog of macro.get (full source). Returns the complete XML (ALL panels/extensions on the device, not a single one) which can be saved to a .xml file and installed on another device. Pair with listExtensions (inventory/metadata) to know what's present first.",
+      arguments: z.object({
+        deviceId: z.string().describe("Webex device ID"),
+      }),
+      execute: async (
+        args: { deviceId: string },
+        context: {
+          globalArgs: z.infer<typeof WebexGlobalArgsSchema>;
+          logger: {
+            info: (msg: string, vars?: Record<string, unknown>) => void;
+          };
+          writeResource: (
+            type: string,
+            name: string,
+            data: unknown,
+          ) => Promise<unknown>;
+        },
+      ) => {
+        const result = (await xapiCommand(
+          "UserInterface.Extensions.Export",
+          args.deviceId,
+          context.globalArgs,
+          { EmbedData: "On" },
+        )) as Record<string, unknown>;
+
+        // EmbedData=On returns the full panel XML as a string in result.Data.
+        const inner = (result.result as Record<string, unknown>) || {};
+        const xml = (inner.Data as string) ?? (inner.data as string) ?? "";
+        const byteLength = xml.length;
+
+        context.logger.info(
+          "Exported UI extensions XML from device {id}: {bytes} bytes",
+          { id: args.deviceId, bytes: byteLength },
+        );
+
+        const handle = await context.writeResource(
+          "ui-extensions",
+          `ui-ext-export-${sanitizeId(args.deviceId).slice(-12)}`,
+          {
+            deviceId: args.deviceId,
+            xml,
+            byteLength,
+            exportedAt: new Date().toISOString(),
+          },
+        );
+        return { dataHandles: [handle] };
       },
     },
 

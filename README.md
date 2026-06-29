@@ -15,14 +15,17 @@ Cisco RoomOS device and macro management for [Swamp](https://swamp.club) via the
 |--------|-------------|
 | `list` | List all devices in the org, with optional filters by product, connection status, tag, or type |
 | `get` | Get a single device by ID |
-| `health` | Connection status, firmware version, uptime, standby state, network info, and platform detection |
-| `runCommand` | Execute an arbitrary xAPI command via the Webex cloud proxy (pass arguments as a JSON string) |
 | `getStatus` | Query xAPI status values using specific paths safe for both native and MTR modes |
-| `getConfiguration` | Retrieve device configuration values |
+| `healthCheck` | Connection status, firmware version, uptime, standby state, network info, and platform detection |
+| `executeCommand` | Execute an arbitrary xAPI command via the Webex cloud proxy (pass arguments as a JSON string) |
 | `setConfiguration` | Apply configuration patches in JSON Patch format |
+| `enableMacros` | Enable the macro framework (auto-start/mode) on a device |
+| `listExtensions` | List the UI extension panels installed on a device |
+| `exportExtensions` | Export a device's UI extensions configuration as XML |
+| `updateTags` | Replace the device's tags in Control Hub |
 | `listWorkspaces` | List Webex workspaces with calendar and calling information |
 | `getWorkspace` | Get workspace details by ID |
-| `refreshToken` | Refresh the Webex OAuth access token using the stored refresh token |
+| `sync` | Refresh and persist the cached device inventory from Control Hub |
 
 ### cisco-collaboration-endpoints-macro
 
@@ -33,10 +36,11 @@ Cisco RoomOS device and macro management for [Swamp](https://swamp.club) via the
 | `save` | Upload macro source to a device (with optional ES6 to ES5 transpile) |
 | `activate` | Activate a saved macro |
 | `deactivate` | Deactivate a macro without removing it |
-| `delete` | Remove a macro from a device |
+| `remove` | Remove a macro from a device |
+| `restartRuntime` | Restart the device's macro runtime |
 | `deploy` | Full lifecycle deployment: enable macro mode, optionally remove existing, save, activate, and restart the runtime, with step-by-step audit output |
-| `fleetPush` | Deploy a macro to multiple devices with error isolation per device |
-| `listFromDevice` | List macros directly from a specific device |
+| `deployFleet` | Deploy a macro to multiple devices with error isolation per device |
+| `sync` | Refresh and persist the cached macro inventory |
 
 ## Installation
 
@@ -68,7 +72,7 @@ swamp vault set webex client-secret <your-client-secret>
 3. Create a model instance, wiring credentials from vault:
 
 ```bash
-swamp model create --type @dougschaefer/cisco-collaboration-endpoints-device --name cisco-devices
+swamp model create @dougschaefer/cisco-collaboration-endpoints-device cisco-devices
 ```
 
 When prompted for global arguments, use vault references:
@@ -83,18 +87,18 @@ clientSecret: ${{ vault.get(webex, client-secret) }}
 4. Run methods against the instance:
 
 ```bash
-swamp model execute cisco-devices --method list
-swamp model execute cisco-devices --method health
+swamp model method run cisco-devices list
+swamp model method run cisco-devices healthCheck
 ```
 
 ## API Compatibility
 
 All device and macro operations use the Webex Control Hub REST API at `https://webexapis.com/v1`, specifically the `/v1/devices`, `/v1/xapi/command`, `/v1/xapi/status`, `/v1/deviceConfigurations`, and `/v1/workspaces` endpoints.
 
-MTR-mode devices accept xAPI commands normally through the cloud proxy. The `include_for_extension` flag that limits certain configurations and statuses in MTR mode only applies to config and status queries, not to commands, so macro lifecycle operations (save, activate, remove, restart runtime) work on MTR devices the same as native RoomOS. The `health` and `getStatus` methods use MTR-safe status paths by default.
+MTR-mode devices accept xAPI commands normally through the cloud proxy. The `include_for_extension` flag that limits certain configurations and statuses in MTR mode only applies to config and status queries, not to commands, so macro lifecycle operations (save, activate, remove, restart runtime) work on MTR devices the same as native RoomOS. The `healthCheck` and `getStatus` methods use MTR-safe status paths by default.
 
-Token refresh is built into the device model via the `refreshToken` method, which exchanges the stored refresh token for a new access token through the Webex OAuth flow.
+Token refresh is handled automatically by the device model — it exchanges the stored refresh token for a new access token through the Webex OAuth flow whenever the access token has expired.
 
 ## License
 
-MIT — see [LICENSE](LICENSE)
+MIT — see [LICENSE](LICENSE.txt)
