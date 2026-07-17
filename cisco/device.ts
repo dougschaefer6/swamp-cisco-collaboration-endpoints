@@ -138,7 +138,7 @@ const UiExtensionsSchema = z.object({
  */
 export const model = {
   type: "@dougschaefer/cisco-collaboration-endpoints-device",
-  version: "2026.06.29.1",
+  version: "2026.07.17.1",
   globalArguments: WebexGlobalArgsSchema,
   resources: {
     device: {
