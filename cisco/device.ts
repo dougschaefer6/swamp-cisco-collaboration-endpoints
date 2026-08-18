@@ -114,6 +114,13 @@ const WorkspaceSchema = z.object({
   displayName: z.string(),
 }).passthrough();
 
+const DeviceStatusSchema = z.object({
+  deviceId: z.string(),
+  statusPaths: z.array(z.string()),
+  result: z.unknown().optional(),
+  queriedAt: z.string().optional(),
+}).passthrough();
+
 const UiExtensionsSchema = z.object({
   deviceId: z.string(),
   extensions: z.record(z.string(), z.unknown()).optional(),
@@ -138,7 +145,7 @@ const UiExtensionsSchema = z.object({
  */
 export const model = {
   type: "@dougschaefer/cisco-collaboration-endpoints-device",
-  version: "2026.07.17.1",
+  version: "2026.08.18.1",
   globalArguments: WebexGlobalArgsSchema,
   resources: {
     device: {
@@ -152,6 +159,13 @@ export const model = {
       description:
         "Webex workspace (room/space) with assigned devices, calendar integration, and calling configuration",
       schema: WorkspaceSchema,
+      lifetime: "infinite" as const,
+      garbageCollection: 10,
+    },
+    "device-status": {
+      description:
+        "xAPI status values read back from a RoomOS endpoint — the raw response body keyed by the requested status paths, so a workflow can reference telemetry (product identifiers, uptime, peripherals) that the Control Hub device record does not carry.",
+      schema: DeviceStatusSchema,
       lifetime: "infinite" as const,
       garbageCollection: 10,
     },
@@ -266,6 +280,11 @@ export const model = {
           logger: {
             info: (msg: string, vars?: Record<string, unknown>) => void;
           };
+          writeResource: (
+            type: string,
+            name: string,
+            data: unknown,
+          ) => Promise<unknown>;
         },
       ) => {
         const result = await xapiStatus(
@@ -274,21 +293,22 @@ export const model = {
           ...args.statusPaths,
         );
 
+        const name = sanitizeId(
+          `device-status-${args.deviceId.slice(-12)}`,
+        );
+        const handle = await context.writeResource("device-status", name, {
+          deviceId: args.deviceId,
+          statusPaths: args.statusPaths,
+          result: result.result,
+          queriedAt: new Date().toISOString(),
+        });
+
         context.logger.info(
           "Queried {count} status paths on device {id}",
           { count: args.statusPaths.length, id: args.deviceId },
         );
 
-        return {
-          data: {
-            attributes: {
-              deviceId: args.deviceId,
-              statusPaths: args.statusPaths,
-              result: result.result,
-            },
-            name: `device-status-${sanitizeId(args.deviceId).slice(-12)}`,
-          },
-        };
+        return { dataHandles: [handle] };
       },
     },
 

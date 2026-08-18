@@ -15,7 +15,7 @@ Cisco RoomOS device and macro management for [Swamp](https://swamp.club) via the
 |--------|-------------|
 | `list` | List all devices in the org, with optional filters by product, connection status, tag, or type |
 | `get` | Get a single device by ID |
-| `getStatus` | Query xAPI status values using specific paths safe for both native and MTR modes |
+| `getStatus` | Query xAPI status values using specific paths safe for both native and MTR modes, persisted as a `device-status` resource |
 | `healthCheck` | Connection status, firmware version, uptime, standby state, network info, and platform detection |
 | `executeCommand` | Execute an arbitrary xAPI command via the Webex cloud proxy (pass arguments as a JSON string) |
 | `setConfiguration` | Apply configuration patches in JSON Patch format |
@@ -90,6 +90,16 @@ clientSecret: ${{ vault.get(webex, client-secret) }}
 swamp model method run cisco-devices list
 swamp model method run cisco-devices healthCheck
 ```
+
+## Identifying Device Models
+
+`list` and `get` return one flat collection that holds both endpoints and the peripherals attached to them, discriminated by the `type` field: `roomdesk` is the codec or desk device, and `camera`, `microphone`, `monitor`, `accessory`, and `controlsystem` are the components hanging off it. Filter on `type == "roomdesk"` when you want one record per room; the peripherals are joined back to their parent through `workspaceId` or `placeId`. Code that iterates the whole collection as though every row were an endpoint will see peripheral names such as `Cisco Quad Camera` sitting beside `Cisco Room Kit EQ` and read them as vague model data — they are not, that is the peripheral's actual product name.
+
+The `product` field carries the Cisco marketing model name (`Cisco Room Kit EQ`, `Cisco Codec Pro`, `Cisco Desk Pro`), and that is as specific as the identity gets. There is no orderable SKU or part number for the endpoint itself: over xAPI, `SystemUnit.ProductId` returns the same string as `product`, `SystemUnit.ProductPlatform` returns the short form, `SystemUnit.ProductType` returns a coarse class such as `Cisco Codec`, and `SystemUnit.Hardware.Module` exposes only a serial number and a compatibility level.
+
+Peripherals do carry a hardware part number, but only through xAPI and only when queried against the parent codec. `Peripherals.ConnectedDevice[*].HardwareInfo` returns Cisco's board identifier — `73-101864-0` for a Room Navigator, for example — alongside the peripheral's serial number, type, and MAC address. MTR-mode devices filter this path and return nothing for it, so read peripherals from natively registered endpoints.
+
+Products reported for third-party equipment come from EDID and USB descriptors rather than from Cisco, which is why display rows arrive as strings like `SAM SAMSUNG` or `EXN Extron HDMI`. Nothing in Control Hub improves those values.
 
 ## API Compatibility
 
